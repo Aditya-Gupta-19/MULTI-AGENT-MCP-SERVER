@@ -130,17 +130,71 @@ state shape.
 
 ## Improvements Made
 
-*(Living log — appended as each release actually ships. Not written in advance.)*
+**Stages 1-2 (Release 1):** environment setup and configuration are in place — pinned
+dependencies that actually install and import cleanly on Windows (see Issues Faced
+below), and a `Settings` object that fails fast and loudly if `API_KEY` is missing
+rather than silently running unauthenticated.
 
 ## Observations While Building
 
-*(Living log — genuine notes from actually building this, not a forecast.)*
+- **`claude.md`'s exact version pins were internally inconsistent.** `langchain==0.3.3`
+  can't coexist with `langchain-community==0.3.3` (the latter requires
+  `langchain>=0.3.4`), and `fastapi==0.115.0` / `mcp==1.1.0` are both below what
+  `fastmcp==2.0.0` actually requires. A spec that reads as "exact, reproducible
+  versions" isn't automatically internally consistent — it still has to be installed
+  once, for real, before trusting it.
+- **A stale pin isn't just "a slightly old version" — it can be a dead end.**
+  `arize-phoenix==4.29.0` is about 18 months behind current PyPI, and in that time its
+  *own* transitive dependencies (`arize-phoenix-evals`'s internal module layout,
+  `sqlean-py`'s published wheels, `pandas` dropping a hard `pytz` dependency) moved out
+  from under it. Chasing each break individually got expensive fast; bumping straight
+  to a current release (`20.4.0`) fixed the whole chain in one move instead of five.
+- **Fewer hard pins, more honest pins.** Once the "infra" packages (`mcp`, `fastapi`,
+  `httpx`, `uvicorn`) were left unpinned, pip resolved a mutually-compatible set on its
+  own. Pinning every single package looks more reproducible on paper, but if the pins
+  don't actually agree with each other, that reproducibility is fake anyway.
 
 ## Issues Faced & Fixes
 
 Seeded from known issues in this stack; expanded with anything actually hit during the build.
 
 ```
+Issue: pip "ResolutionImpossible" — langchain==0.3.3 vs langchain-community==0.3.3
+Fix:   langchain-community 0.3.3 requires langchain>=0.3.4,<0.4.0. Bumped the
+       langchain pin to 0.3.4 (the minimum that satisfies it).
+
+Issue: pip "ResolutionImpossible" — fastapi==0.115.0 vs fastmcp==2.0.0
+Fix:   fastmcp 2.0.0 requires fastapi>=0.115.12. Bumped, then later unpinned entirely
+       once arize-phoenix 20.4.0 pushed the floor to fastapi>=0.137.0.
+
+Issue: pip "ResolutionImpossible" — mcp==1.1.0 vs fastmcp==2.0.0
+Fix:   fastmcp 2.0.0 requires mcp>=1.6.0,<2.0.0. Unpinned mcp instead of chasing a
+       moving floor — fastmcp already declares the range it needs.
+
+Issue: sqlean-py fails to build from source on Windows (MSVC can't compile POSIX
+       headers like dirent.h / mode_t used in its bundled SQLite extension code)
+Fix:   Was arize-phoenix==4.29.0 pulling in whatever sqlean-py version pip resolved to
+       newest first (no Windows wheel for that one). Resolved itself once
+       arize-phoenix was bumped to 20.4.0, which depends on arize-phoenix-sqlean
+       instead — that one ships a proper cp312-win_amd64 wheel.
+
+Issue: ModuleNotFoundError: No module named 'pytz' when importing phoenix
+Fix:   arize-phoenix's code assumed pandas always pulls in pytz transitively; pandas
+       3.x moved to stdlib zoneinfo and dropped that. Also resolved by the
+       arize-phoenix version bump — not present in the current release's code path.
+
+Issue: ModuleNotFoundError: No module named 'phoenix.evals.models'
+Fix:   arize-phoenix==4.29.0's bundled phoenix.experiments code called into an
+       arize-phoenix-evals internal path that had since been refactored upstream
+       (evals ships independently and had moved on). This is what made "just pin one
+       more transitive dependency" a dead end — fixed by moving to a current,
+       internally-consistent arize-phoenix release instead.
+
+Issue: pytest collection error — "Field required: api_key" when importing src.config
+Fix:   Settings() instantiates eagerly at module import time (by design — fail fast
+       if misconfigured), so any test that imports src.config needs API_KEY set via
+       a real local .env. This is expected, not a bug — see How to Run It.
+
 Issue: "ChatOllama not found" or import error
 Fix:   pip install langchain-ollama langchain-community
 
@@ -176,6 +230,22 @@ class AgentState(TypedDict):
     task: str                                   # original user task — never changes
 ```
 
+**Configuration** (`.env`, see `.env.example` for the template — `src/config.py` is the single source of truth every other module reads from):
+
+| Variable | Default | Notes |
+|---|---|---|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | |
+| `LLM_MODEL` | `llama3.2` | |
+| `LLM_TEMPERATURE` | `0.0` | |
+| `MAX_AGENT_ITERATIONS` | `10` | Supervisor's hard loop guard |
+| `MAX_REACT_STEPS` | `5` | Per-agent ReAct loop guard |
+| `API_KEY` | *(required, no default)* | This service's own auth key |
+| `RATE_LIMIT_PER_MINUTE` | `60` | |
+| `RAG_API_BASE_URL` | `http://localhost:8000` | External RAG project's base URL — not in claude.md's original reference, added because `rag_query` needs it |
+| `RAG_API_KEY` | `dev-key-change-in-production` | Auth key for the external RAG project's own API |
+| `LOG_LEVEL` | `INFO` | |
+| `PHOENIX_PORT` | `6006` | |
+
 **MCP tools exposed:**
 
 | Tool | Description |
@@ -187,11 +257,69 @@ class AgentState(TypedDict):
 
 ## How to Run It
 
-*(Filled in at Stage 1 with concrete venv/Ollama setup steps; a Docker-based alternative is added in Release 2.)*
+**1. Install Ollama and pull the model**
+
+- Windows/macOS: download from [ollama.com/download](https://ollama.com/download), then:
+  ```powershell
+  ollama pull llama3.2
+  ```
+- Linux:
+  ```bash
+  curl -fsSL https://ollama.com/install.sh | sh
+  ollama pull llama3.2
+  ```
+
+**2. Python environment** (Python 3.11+)
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+```bash
+# macOS/Linux
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**3. Configure secrets**
+
+```bash
+cp .env.example .env
+# edit .env — set API_KEY to your own value
+```
+
+**4. Run Ollama in the background, then the pieces as they land**
+
+```bash
+ollama serve &
+# further run commands are added here as each stage ships
+# (single ReAct agent test, graph test, uvicorn API, MCP server, Phoenix)
+```
+
+*(A Docker Compose alternative for local infra is added in Release 2.)*
 
 ## Testing
 
-*(Filled in at Stage 1 — `pytest` commands and the unit/integration split.)*
+```bash
+# Full suite, no external services required
+pytest tests/ -v
+
+# Stage 1 only — confirms every dependency actually installed
+pytest tests/test_environment.py -v
+
+# Stage 2 only — configuration loading/validation
+pytest tests/test_config.py -v
+```
+
+Tests marked `@pytest.mark.integration` need a live external service (Ollama, Phoenix,
+network) and are excluded by default — run them explicitly with `pytest -m integration`
+once those services are up. Everything else is expected to pass with zero services
+running, on a clean clone — as long as `.env` exists with `API_KEY` set (see How to Run
+It, step 3): `src/config.py` loads `Settings()` at import time, so any test file that
+touches agent code needs it too. CI (Stage 10) sets a dummy `API_KEY` in the workflow
+itself rather than relying on a committed `.env`.
 
 ## Relationship to the RAG Project
 
