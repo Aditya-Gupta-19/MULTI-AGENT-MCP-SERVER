@@ -137,6 +137,16 @@ rather than silently running unauthenticated.
 
 ## Observations While Building
 
+**Stage 3:** all four tools were live-smoke-tested against real services, not just
+mocks — `calculator` against real expressions, `fetch_url` against a real public page
+(clean extraction confirmed), and `web_search` against real DuckDuckGo (immediately hit
+their rate limit — see Issues Faced). The calculator's sandbox gap (attribute-chain
+introspection bypassing the empty-`__builtins__` restriction) is real and reproducible;
+it's deliberately left open until Stage 11 rather than silently patched early, with a
+test (`test_calculator_sandbox_gap_not_yet_hardened`) that documents it and will flip
+to `assertRaises` once the Stage 11 fix lands.
+
+
 - **`claude.md`'s exact version pins were internally inconsistent.** `langchain==0.3.3`
   can't coexist with `langchain-community==0.3.3` (the latter requires
   `langchain>=0.3.4`), and `fastapi==0.115.0` / `mcp==1.1.0` are both below what
@@ -155,6 +165,17 @@ rather than silently running unauthenticated.
   don't actually agree with each other, that reproducibility is fake anyway.
 
 ## Issues Faced & Fixes
+
+```
+Issue: web_search hit "202 Ratelimit" from DuckDuckGo on the very first live call
+       during Stage 3 validation — not a hypothetical, reproduced directly.
+Fix:   Nothing to "fix" — this is the tool's designed failure path working correctly
+       (returns {"error": "..."} instead of raising). The real takeaway: DDGS's free
+       endpoint appears to rate-limit datacenter/cloud-VM IP ranges more aggressively
+       than a home connection. Deploying the FastAPI/MCP server to any cloud host
+       should expect web_search to be unreliable there — a paid search API is the
+       straightforward swap if that matters for your deployment.
+```
 
 Seeded from known issues in this stack; expanded with anything actually hit during the build.
 
