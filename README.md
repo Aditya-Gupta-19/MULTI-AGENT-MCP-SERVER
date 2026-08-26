@@ -137,6 +137,20 @@ rather than silently running unauthenticated.
 
 ## Observations While Building
 
+**Stage 5:** the full supervisor graph was live-tested two ways, not just mocked: (1)
+claude.md's own daily-command smoke test ("What is the capital of France?") — the
+supervisor answered directly without routing anywhere, 38 seconds, correct; (2) a math
+question explicitly asking for the analysis agent — the supervisor routed to
+`analysis`, which called `calculator` and got 847 × 293 = 248,171 right, and the
+supervisor then finished with the correct answer. That second run took **3 iterations**
+(routed to `analysis` twice before finishing) and produced one `[analysis]` message
+with empty content along the way — llama3.2 isn't perfectly decisive about recognizing
+"the sub-agent already answered this," so it can loop back once redundantly before
+routing to FINISH. The `max_agent_iterations` guard exists precisely for this kind of
+non-determinism; this run stayed well within it and reached the right answer, but it's
+a real, observed inefficiency worth knowing about rather than assuming the supervisor
+always takes the shortest path.
+
 **Stage 4:** built on `langgraph.prebuilt.create_react_agent` (native tool-calling)
 rather than hand-parsing a "Thought: ... Action: tool(args)" text loop — llama3.2
 reports `tools` in its Ollama capabilities, so tool-calling is available and is a
@@ -347,6 +361,15 @@ pytest tests/test_environment.py -v
 
 # Stage 2 only — configuration loading/validation
 pytest tests/test_config.py -v
+
+# Stage 3 — the four tools (mocked; run without -m to include these, they're not integration)
+pytest tests/test_tools.py -v
+
+# Stage 4/5 — ReAct agent and the supervisor graph, mocked path
+pytest tests/test_react_agent.py tests/test_graph.py -v -m "not integration"
+
+# Stage 4/5 — the same two files, live against a running Ollama
+pytest tests/test_react_agent.py tests/test_graph.py -v -m integration
 ```
 
 Tests marked `@pytest.mark.integration` need a live external service (Ollama, Phoenix,
