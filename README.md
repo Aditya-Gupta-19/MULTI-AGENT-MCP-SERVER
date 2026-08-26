@@ -187,11 +187,66 @@ class AgentState(TypedDict):
 
 ## How to Run It
 
-*(Filled in at Stage 1 with concrete venv/Ollama setup steps; a Docker-based alternative is added in Release 2.)*
+**1. Install Ollama and pull the model**
+
+- Windows/macOS: download from [ollama.com/download](https://ollama.com/download), then:
+  ```powershell
+  ollama pull llama3.2
+  ```
+- Linux:
+  ```bash
+  curl -fsSL https://ollama.com/install.sh | sh
+  ollama pull llama3.2
+  ```
+
+**2. Python environment** (Python 3.11+)
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+```bash
+# macOS/Linux
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**3. Configure secrets**
+
+```bash
+cp .env.example .env
+# edit .env — set API_KEY to your own value
+```
+
+**4. Run Ollama in the background, then the pieces as they land**
+
+```bash
+ollama serve &
+# further run commands are added here as each stage ships
+# (single ReAct agent test, graph test, uvicorn API, MCP server, Phoenix)
+```
+
+*(A Docker Compose alternative for local infra is added in Release 2.)*
 
 ## Testing
 
-*(Filled in at Stage 1 — `pytest` commands and the unit/integration split.)*
+```bash
+# Full suite, no external services required
+pytest tests/ -v
+
+# Stage 1 only — confirms every dependency actually installed
+pytest tests/test_environment.py -v
+
+# Stage 2 only — configuration loading/validation
+pytest tests/test_config.py -v
+```
+
+Tests marked `@pytest.mark.integration` need a live external service (Ollama, Phoenix,
+network) and are excluded by default — run them explicitly with `pytest -m integration`
+once those services are up. Everything else is expected to pass with zero services
+running, on a clean clone.
 
 ## Relationship to the RAG Project
 
