@@ -176,6 +176,22 @@ class AgentState(TypedDict):
     task: str                                   # original user task — never changes
 ```
 
+**Configuration** (`.env`, see `.env.example` for the template — `src/config.py` is the single source of truth every other module reads from):
+
+| Variable | Default | Notes |
+|---|---|---|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | |
+| `LLM_MODEL` | `llama3.2` | |
+| `LLM_TEMPERATURE` | `0.0` | |
+| `MAX_AGENT_ITERATIONS` | `10` | Supervisor's hard loop guard |
+| `MAX_REACT_STEPS` | `5` | Per-agent ReAct loop guard |
+| `API_KEY` | *(required, no default)* | This service's own auth key |
+| `RATE_LIMIT_PER_MINUTE` | `60` | |
+| `RAG_API_BASE_URL` | `http://localhost:8000` | External RAG project's base URL — not in claude.md's original reference, added because `rag_query` needs it |
+| `RAG_API_KEY` | `dev-key-change-in-production` | Auth key for the external RAG project's own API |
+| `LOG_LEVEL` | `INFO` | |
+| `PHOENIX_PORT` | `6006` | |
+
 **MCP tools exposed:**
 
 | Tool | Description |
