@@ -1,0 +1,30 @@
+# --- config ---
+pydantic-settings==2.5.2
+
+# --- orchestration ---
+langgraph==0.2.35
+langchain==0.3.3
+langchain-community==0.3.3
+langchain-ollama==0.2.0
+
+# --- tools ---
+duckduckgo-search==6.3.2
+httpx==0.27.0
+
+# --- mcp ---
+mcp==1.1.0
+fastmcp==2.0.0
+
+# --- api ---
+fastapi==0.115.0
+uvicorn==0.30.6
+
+# --- observability ---
+arize-phoenix==4.29.0
+# Added beyond claude.md's list: arize-phoenix alone does not auto-instrument LangChain/LangGraph.
+# These are required for Stage 8's tracing to actually capture agent LLM calls.
+openinference-instrumentation-langchain>=0.1.29
+opentelemetry-exporter-otlp-proto-grpc>=1.25.0
+
+# --- testing ---
+pytest==8.3.3
