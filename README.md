@@ -137,6 +137,21 @@ rather than silently running unauthenticated.
 
 ## Observations While Building
 
+**Stage 4:** built on `langgraph.prebuilt.create_react_agent` (native tool-calling)
+rather than hand-parsing a "Thought: ... Action: tool(args)" text loop — llama3.2
+reports `tools` in its Ollama capabilities, so tool-calling is available and is a
+strictly more reliable way to implement the same ReAct pattern claude.md describes.
+Live-tested against real Ollama (not mocked): asked "What is 12 times 8? Use the
+calculator tool," the agent genuinely called `calculator` and answered 96 correctly —
+but took **~75 seconds** end to end on local CPU inference for a single tool-call round
+trip. That's a real number worth planning around: Stage 6's FastAPI `/run` endpoint and
+Stage 7's MCP tools will need timeouts well above typical HTTP defaults, and a
+multi-agent task (Stage 5) that chains a supervisor decision *plus* a sub-agent's own
+ReAct loop will take correspondingly longer. Mocked tests use LangChain's
+`GenericFakeChatModel` test double (with `bind_tools` overridden — the base class
+raises `NotImplementedError` for it) so the default test run stays fast; the live check
+is marked `@pytest.mark.integration`.
+
 **Stage 3:** all four tools were live-smoke-tested against real services, not just
 mocks — `calculator` against real expressions, `fetch_url` against a real public page
 (clean extraction confirmed), and `web_search` against real DuckDuckGo (immediately hit
